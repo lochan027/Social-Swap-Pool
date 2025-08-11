@@ -1,0 +1,176 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  walletAddress String  @unique
+  name         String?
+  email        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdPools  Pool[]          @relation("PoolCreator")
+  poolMemberships PoolMember[]
+  votes           Vote[]
+  swapProposals   SwapProposal[]
+
+  @@map("users")
+}
+
+model Pool {
+  id              String           @id @default(cuid())
+  name            String
+  description     String?
+  multisigAddress String           @unique
+  creatorId       String
+  visibility      PoolVisibility   @default(PUBLIC)
+  joinCode        String?          @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  creator         User             @relation("PoolCreator", fields: [creatorId], references: [id])
+  members         PoolMember[]
+  swapProposals   SwapProposal[]
+  tokens          PoolToken[]
+  transactions    Transaction[]
+
+  @@map("pools")
+}
+
+model PoolMember {
+  id        String   @id @default(cuid())
+  poolId    String
+  userId    String
+  role      Role     @default(MEMBER)
+  joinedAt  DateTime @default(now())
+  isActive  Boolean  @default(true)
+
+  pool      Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, userId])
+  @@map("pool_members")
+}
+
+model SwapProposal {
+  id           String           @id @default(cuid())
+  poolId       String
+  proposerId   String
+  fromToken    String
+  toToken      String
+  amount       String           // Decimal as string to handle large numbers
+  minReceived  String           // Minimum amount to receive (slippage protection)
+  status       ProposalStatus   @default(PENDING)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  executedAt   DateTime?
+  txHash       String?
+  errorMessage String?
+
+  pool         Pool             @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  proposer     User             @relation(fields: [proposerId], references: [id])
+  votes        Vote[]
+  transaction  Transaction?
+
+  @@map("swap_proposals")
+}
+
+model Vote {
+  id           String   @id @default(cuid())
+  proposalId   String
+  userId       String
+  vote         VoteType
+  createdAt    DateTime @default(now())
+
+  proposal     SwapProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, userId])
+  @@map("votes")
+}
+
+model PoolToken {
+  id        String   @id @default(cuid())
+  poolId    String
+  symbol    String
+  address   String?
+  decimals  Int
+  balance   String   // Decimal as string
+  updatedAt DateTime @updatedAt
+
+  pool      Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, symbol])
+  @@map("pool_tokens")
+}
+
+model Transaction {
+  id           String           @id @default(cuid())
+  poolId       String
+  proposalId   String?         @unique
+  type         TransactionType
+  status       TransactionStatus @default(PENDING)
+  fromToken    String?
+  toToken      String?
+  amount       String?
+  txHash       String?
+  gasUsed      String?
+  gasPrice     String?
+  errorMessage String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  executedAt   DateTime?
+
+  pool         Pool           @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  proposal     SwapProposal?  @relation(fields: [proposalId], references: [id])
+
+  @@map("transactions")
+}
+
+enum Role {
+  CREATOR
+  ADMIN
+  MEMBER
+}
+
+enum PoolVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum VoteType {
+  FOR
+  AGAINST
+  ABSTAIN
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  SWAP
+  POOL_CREATION
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
